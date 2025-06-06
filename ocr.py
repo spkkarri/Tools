@@ -1,3 +1,10 @@
+"""
+sudo apt-get update
+sudo apt-get install tesseract-ocr
+sudo apt-get install poppler-utils
+pip install pytesseract pdf2image Pillow
+"""
+
 import pytesseract
 from pdf2image import convert_from_path
 import os
