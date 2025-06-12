@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import shutil
+import time  # Add this import
 
 # Function to install missing packages
 def install_package(package):
@@ -87,6 +88,7 @@ def download_video(url, quality, output_path, file_list, status_label, text_area
             'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
             'noplaylist': True,
             'progress_hooks': [lambda d: update_progress(d, file_list, text_area, root)],
+            'ignoreerrors': True  # Add this line
         }
 
         if quality == "Audio Only":
@@ -118,13 +120,21 @@ def download_video(url, quality, output_path, file_list, status_label, text_area
 def download_playlist(url, quality, output_path, file_list, status_label, text_area, root):
     try:
         ydl_opts = {
-    		'outtmpl': os.path.join(output_path, '%(playlist_index)s-%(title)s.%(ext)s'),
-    		'noplaylist': False,
-    		'progress_hooks': [lambda d: update_progress(d, file_list, text_area, root)],
-    		'format': f'bestvideo[height<={quality[:-1]}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-    		'ignoreerrors': True,
-    		'merge_output_format': 'mp4',
-		}
+            'outtmpl': os.path.join(output_path, '%(playlist_index)s-%(title)s.%(ext)s'),
+            'noplaylist': False,
+            'progress_hooks': [lambda d: update_progress(d, file_list, text_area, root)],
+            'format': f'bestvideo[height<={quality[:-1]}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'ignoreerrors': True,  # Skip unavailable videos
+            'merge_output_format': 'mp4',
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+            'continue': True,
+            'skip_download': False,
+            'before_download': lambda _: time.sleep(10),  # Add 10 second delay before each download
+            'ignore_no_formats_error': True,  # Skip if no formats available
+            'continue_dl': True  # Continue downloading even if some videos fail
+        }
 
         if quality == "Audio Only":
             ydl_opts.update({
@@ -143,12 +153,21 @@ def download_playlist(url, quality, output_path, file_list, status_label, text_a
             })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-            status_label.config(text="Playlist download complete")
-            messagebox.showinfo("Success", "Playlist downloaded successfully")
+            result = ydl.extract_info(url, download=True)
+            if result:
+                total_videos = len(result['entries']) if 'entries' in result else 0
+                downloaded = sum(1 for entry in result.get('entries', []) if entry is not None)
+                skipped = total_videos - downloaded
+                status_msg = f"Playlist download complete. Downloaded {downloaded}/{total_videos} videos (Skipped {skipped})"
+                status_label.config(text=status_msg)
+                messagebox.showinfo("Success", status_msg)
     except Exception as e:
-        status_label.config(text="Error occurred")
-        messagebox.showerror("Error", f"Playlist download failed: {str(e)}")
+        error_msg = str(e)
+        if "Video unavailable" in error_msg or "This video is private" in error_msg:
+            status_label.config(text="Some videos were skipped (unavailable/private)")
+        else:
+            status_label.config(text="Error occurred")
+            messagebox.showerror("Error", f"Playlist download error: {str(e)}")
 
 # Threaded download logic
 def threaded_download(url, quality, output_path, file_list, status_label, text_area, root):
