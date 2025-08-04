@@ -17,7 +17,7 @@ const Podcast = ({ topic }) => {
     }
 
     try {
-      const res = await fetch('http://172.180.6.227:5002/podcast', {
+      const res = await fetch('http://localhost:5002/podcast', {
        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic, targetLanguage: language })

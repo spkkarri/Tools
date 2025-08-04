@@ -575,7 +575,7 @@ const QuizGenerator = ({ sourceText, onClose }) => {
         setQuizData([]);
         
         try {
-            const response = await fetch('http://172.180.6.227:5005/generate-quiz', {
+            const response = await fetch('http://localhost:5005/generate-quiz', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: sourceText, level: level }),
@@ -612,7 +612,7 @@ const QuizGenerator = ({ sourceText, onClose }) => {
                         levelResult.userAnswers[index] !== levelResult.quizData[index].correctAnswerIndex
                     );
                     
-                    const response = await fetch('http://172.180.6.227:5005/generate-recommendations', {
+                    const response = await fetch('http://localhost:5005/generate-recommendations', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
