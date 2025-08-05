@@ -3,7 +3,7 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
-const axios = require('axios');
+const axios =require('axios');
 const cheerio = require('cheerio');
 const cors = require('cors');
 const multer = require('multer');
@@ -135,7 +135,7 @@ app.post('/api', async (req, res) => {
         }
 
         const combinedText = extractedContent.map((c, i) => `--- Source ${i + 1}: ${c.title} (${c.link}) ---\n${c.textContent}`).join('\n\n');
-        
+
         const prompt = `You are an expert research analyst. Analyze the provided web sources to comprehensively answer the user's query.
 
 USER'S QUERY: "${query}"
@@ -157,6 +157,28 @@ ${combinedText.substring(0, 15000)}
         const result = await model.generateContent(prompt);
         const aiResponse = await result.response.text();
         const parsed = JSON.parse(aiResponse);
+
+        // ================================================================
+        // === START: ADDED CODE TO SAVE HISTORY TO THE DATABASE ===
+        // ================================================================
+        try {
+            const usedSources = (parsed.sources_used || []).map(num => extractedContent[num - 1]).filter(Boolean);
+            const historyEntry = new History({
+                query: query,
+                summary: parsed.summary,
+                key_points: parsed.key_points,
+                sources: usedSources,
+                follow_up_questions: parsed.follow_up_questions
+            });
+            await historyEntry.save();
+            console.log('✅ [HISTORY] Successfully saved response to the database.');
+        } catch (dbError) {
+            // Log the error, but don't fail the request. The user can still get their answer.
+            console.error('❌ [HISTORY] Failed to save response to the database:', dbError);
+        }
+        // ================================================================
+        // === END: ADDED CODE TO SAVE HISTORY TO THE DATABASE ===
+        // ================================================================
 
         res.json({
             summary: parsed.summary,
@@ -187,6 +209,70 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
     res.json({ message: `File '${req.file.originalname}' uploaded successfully.` });
 });
+
+
+// =======================================================
+// ▼▼▼ NEWLY ADDED HISTORY MANAGEMENT ROUTES ▼▼▼
+// =======================================================
+// GET /api/history - Fetch all history items
+app.get('/api/history', async (req, res) => {
+    try {
+        const historyItems = await History.find({}).sort({ createdAt: -1 });
+        res.status(200).json(historyItems);
+    } catch (error) {
+        console.error('❌ Error fetching history:', error);
+        res.status(500).json({ error: 'Failed to retrieve history' });
+    }
+});
+
+// DELETE /api/history/:id - Delete a specific history item
+app.delete('/api/history/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: 'Invalid history item ID format.' });
+        }
+        const result = await History.findByIdAndDelete(id);
+        if (!result) {
+            return res.status(404).json({ error: 'History item not found.' });
+        }
+        console.log(`✅ [HISTORY] Deleted item with ID: ${id}`);
+        res.status(200).json({ message: 'History item deleted successfully.' });
+    } catch (error) {
+        console.error(`❌ Error deleting history item ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to delete history item.' });
+    }
+});
+
+// PUT /api/history/:id - Rename/update a specific history item
+app.put('/api/history/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { query } = req.body;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: 'Invalid history item ID format.' });
+        }
+        if (!query || typeof query !== 'string' || query.trim() === '') {
+            return res.status(400).json({ error: 'New query name is required.' });
+        }
+        const updatedItem = await History.findByIdAndUpdate(
+            id,
+            { query: query.trim() },
+            { new: true, runValidators: true }
+        );
+        if (!updatedItem) {
+            return res.status(404).json({ error: 'History item not found.' });
+        }
+        console.log(`✅ [HISTORY] Renamed item with ID: ${id} to "${query}"`);
+        res.status(200).json(updatedItem);
+    } catch (error) {
+        console.error(`❌ Error updating history item ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to update history item.' });
+    }
+});
+// =======================================================
+// ▲▲▲ END OF NEWLY ADDED ROUTES ▲▲▲
+// =======================================================
 
 
 // --- ERROR HANDLING & 404 ---
